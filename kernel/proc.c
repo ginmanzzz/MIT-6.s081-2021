@@ -657,3 +657,12 @@ procdump(void)
     printf("\n");
   }
 }
+
+int collectProcNum(void) {
+  int cnt = 0;
+  for (int i = 0; i < NPROC; i++) {
+    if (proc[i].state != UNUSED)
+      cnt++;
+  }
+  return cnt;
+}

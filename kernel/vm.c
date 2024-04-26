@@ -432,3 +432,25 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void print_recur(pagetable_t pagetable, int layer) {
+  // layer belongs [1, 3]
+  if (layer > 3)
+    return;
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if ( !(pte & PTE_V) )
+      continue;
+    for (int j = 1; j <= layer; j++) {
+      printf(" ..");
+    }
+    pagetable_t child = (pagetable_t)PTE2PA(pte);
+    printf("%d: pte %p pa %p\n", i, pte, child);
+    print_recur(child, layer + 1);
+  }
+}
+
+void vmprint(pagetable_t pagetable) {
+  printf("page table %p\n", pagetable);
+  print_recur(pagetable, 1);
+}

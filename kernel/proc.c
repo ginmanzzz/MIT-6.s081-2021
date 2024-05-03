@@ -119,6 +119,11 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->alarm_period = 0;
+  p->past_time = 0;
+  p->alarm_fn = 0;
+  p->dealing_fn = 0;
+  p->saved_trap_frame = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -134,6 +139,13 @@ found:
     release(&p->lock);
     return 0;
   }
+  
+  // allocate a trapframe page for alarm fn to use
+  if ((p->saved_trap_frame = (struct trapframe*)kalloc()) == 0) {
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -141,14 +153,6 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  p->pt=0;
-  p->period=0;
-  p->alarm=0;
-  if((p->alarmframe = (struct trapframe *)kalloc()) == 0){
-      freeproc(p);
-      release(&p->lock);
-      return 0;
-  }
   return p;
 }
 
@@ -161,11 +165,17 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
-  if(p->alarmframe)
-    kfree((void*)p->alarmframe);
-  p->alarmframe = 0;
+  if (p->saved_trap_frame)
+    kfree((void*)p->saved_trap_frame);
+  p->saved_trap_frame = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+
+  p->alarm_period = 0;
+  p->past_time = 0;
+  p->alarm_fn = 0;
+  p->dealing_fn = 0;
+
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;

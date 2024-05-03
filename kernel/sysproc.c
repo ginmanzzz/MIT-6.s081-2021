@@ -99,25 +99,20 @@ sys_uptime(void)
 uint64
 sys_sigalarm(void)
 {
-    int n;
-    if(argint(0, &n) < 0){
-        return -1;
-    }
-    uint64 callback;
-    if(argaddr(1, &callback) < 0) {
-        return -1;
-    }
-    struct proc* p = myproc();
-    p->period=n;
-    p->callback=callback;
-    return 0;
+  struct proc* p = myproc();
+  if (argint(0, &p->alarm_period) < 0)
+    return -1;
+  
+  if (argaddr(1, &p->alarm_fn) < 0)
+    return -1;
+  return 0;
 }
 
 uint64
 sys_sigreturn(void)
 {
-    struct proc* p = myproc();
-    *p->trapframe=*p->alarmframe;
-    p->alarm=0;
-    return 0;
+  struct proc* p = myproc();
+  p->dealing_fn = 0;
+  memmove(p->trapframe, p->saved_trap_frame, PGSIZE);
+  return 0;
 }

@@ -117,13 +117,14 @@ printf(char *fmt, ...)
 void
 backtrace()
 {
-    printf("backtrace:\n");
-    uint64 p = r_fp();
-    uint64 page = PGROUNDDOWN(p);
-    while(PGROUNDDOWN(p) == page){
-        printf("%p %p\n", *(uint64*)(p-8), p);
-        p = *(uint64*)(p-16);
-    }
+  uint64 fp = r_fp();
+  uint64 stack_top = PGROUNDUP(fp);
+  printf("backtrace:\n");
+  while (fp != stack_top) {
+    uint64 ra = *(uint64*)(fp - 8);
+    printf("%p\n", ra);
+    fp = *(uint64*)(fp - 16);
+  }
 }
 
 void

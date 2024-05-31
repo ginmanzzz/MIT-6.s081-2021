@@ -400,6 +400,29 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+  bn -= NINDIRECT;
+  if (bn < DNINDIRECT){
+    // Load the first layer of indirect block, allocating if necessary.
+    if((addr = ip->addrs[NDIRECT + 1]) == 0)
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev); // the first layer of indirect block.
+    bp = bread(ip->dev, addr);
+    uint index = bn / 256; // in the first layer, each uint entry represents 256 blocks(next layer).
+    a = (uint*)bp->data;
+    if((addr = a[index]) == 0){
+      a[index] = addr = balloc(ip->dev); // allocate a indirect block containing 256 blocks
+      log_write(bp);
+    }
+    brelse(bp);
+    bp = bread(ip->dev, addr);
+    index = bn % 256;
+    a = (uint*)bp->data;
+    if ((addr = a[index]) == 0) {
+      a[index] = addr = balloc(ip->dev); // allocate the real block respond to the bn
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
 
   panic("bmap: out of range");
 }
@@ -430,6 +453,28 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  int k;
+  struct buf* sbp; // second buffer pointer
+  uint* b;
+  if(ip->addrs[NDIRECT + 1]) {
+    bp = bread(ip->dev, ip->addrs[NDIRECT + 1]); // the first layer block
+    a = (uint*)bp->data;
+    for (j = 0; j < NINDIRECT; j++) {
+      if (a[j]) {
+        sbp = bread(ip->dev, a[j]);
+        b = (uint*)sbp->data;
+        for (k = 0; k < NINDIRECT; k++){
+          if (b[k])
+            bfree(ip->dev, b[k]);
+        }
+        brelse(sbp);
+        bfree(ip->dev, a[j]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT + 1]);
   }
 
   ip->size = 0;

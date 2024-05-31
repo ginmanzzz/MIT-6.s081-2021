@@ -322,6 +322,27 @@ sys_open(void)
     return -1;
   }
 
+  // only when file is symbolic link and follow model, 
+  if (ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
+    uint recur = 10;
+    while (ip->type == T_SYMLINK && recur) {
+      readi(ip, 0, (uint64)path, 0, MAXPATH);
+      iunlockput(ip);
+      ip = namei(path);
+      if (ip == 0) {
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      recur--;
+    }
+    if (recur == 0) {
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+  }
+
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
@@ -482,5 +503,30 @@ sys_pipe(void)
     fileclose(wf);
     return -1;
   }
+  return 0;
+}
+
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  if (argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+
+  struct inode *ip;
+  begin_op();
+  // NOTE: don't need to check whether the target file whether exists
+
+  // create path symbolic link file
+  if ((ip = create(path, T_SYMLINK, 0, 0)) == 0) { 
+    end_op();
+    return -1;
+  }
+  // write target path to file
+  if (writei(ip, 0, (uint64)target, 0, strlen(target) + 1) != strlen(target) + 1)
+    panic("symlink write failed");
+  // writei has updated dp
+  iunlockput(ip);
+  end_op();
   return 0;
 }

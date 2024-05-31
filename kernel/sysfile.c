@@ -525,7 +525,7 @@ sys_symlink(void)
   // write target path to file
   if (writei(ip, 0, (uint64)target, 0, strlen(target) + 1) != strlen(target) + 1)
     panic("symlink write failed");
-  // writei has updated dp
+  // writei has updated dp, so don't need to iupdate()
   iunlockput(ip);
   end_op();
   return 0;

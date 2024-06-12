@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -140,6 +141,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->vma_sz = TRAPFRAME;
 
   return p;
 }
@@ -301,6 +303,33 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  memmove(np->vma, p->vma, sizeof(struct vma) * 16);
+  np->vma_sz = p->vma_sz;
+
+  pte_t* pte;
+  uint64 pa;
+  uint flags;
+  char *mem;
+  uint64 addr;
+  int copied_pages = 0;
+  for (addr = PGROUNDDOWN(p->vma_sz); addr < TRAPFRAME; addr += PGSIZE) {
+    if ((pte = walk(p->pagetable, addr, 0)) == 0)
+      panic("vma walk");
+    copied_pages++;
+    if ((*pte & PTE_V) == 0) {
+      continue;
+    }
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+    if ((mem = kalloc()) == 0)
+      panic("vma copy, no free memory");
+    memmove(mem, (char*)pa, PGSIZE);
+    if (mappages(np->pagetable, addr, PGSIZE, (uint64)mem, flags) != 0) {
+      kfree(mem);
+      panic("vma copy, map pages failed");
+    }
+  }
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -333,6 +362,7 @@ reparent(struct proc *p)
   }
 }
 
+static int _munmap();
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
@@ -343,7 +373,7 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
-
+  _munmap();
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
@@ -653,4 +683,23 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+static int _munmap() {
+  struct proc *p = myproc();
+  struct vma* vmap;
+  for (vmap = p->vma; vmap < p->vma + 16; vmap++) {
+    uint64 prePG = PGROUNDDOWN(vmap->rbegin);
+    uint64 curPG = PGROUNDDOWN(vmap->rend);
+    while (prePG <= curPG && prePG != PGROUNDDOWN(vmap->end)) {
+      if (walkaddr(p->pagetable, prePG) != 0) {
+          if (vmap->flags & MAP_SHARED)
+            _filewrite(vmap->fp, prePG, PGSIZE, prePG-vmap->begin);
+          uvmunmap(p->pagetable, prePG, 1, 1);
+        }
+        prePG -= PGSIZE;
+    }
+    vmap->valid = 0;
+  }
+  return 0;
 }

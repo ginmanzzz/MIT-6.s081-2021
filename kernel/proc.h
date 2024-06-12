@@ -18,6 +18,19 @@ struct context {
   uint64 s11;
 };
 
+struct vma {
+  // [begin, end)
+  uint64 begin; // begin
+  uint64 rbegin; // real begin
+  uint64 rend ; // real end
+  uint64 end;     // end
+  int valid; 
+  int prot;       // read, write or both
+  int flags;      // shared or private
+  int offset;     // 
+  struct file *fp; //
+};
+
 // Per-CPU state.
 struct cpu {
   struct proc *proc;          // The process running on this cpu, or null.
@@ -105,4 +118,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  struct vma vma[16];          // Virtual memory areas
+  uint64 vma_sz;
 };

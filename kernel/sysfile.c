@@ -484,3 +484,96 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64 sys_mmap(void)
+{
+  uint64 addr;
+  int length;
+  int prot;
+  int flags;
+  int fd;
+  int offset;
+  struct file* fp;
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, &fd, &fp) < 0 || argint(5, &offset) < 0)
+    return -1;
+  // addr and offset always are 0
+  if (!fp->writable && (prot & PROT_WRITE) && (flags & MAP_SHARED))
+    return -1; 
+  struct vma* vmap;
+  struct proc *p = myproc();
+  for (vmap = p->vma; vmap < p->vma + 16; vmap++) {
+    if (vmap->valid == 0)
+      break;
+  }
+  if (vmap == (p->vma + 16)) {
+    printf("no free vma\n");
+    return -1;
+  }
+  vmap->begin = p->vma_sz - PGROUNDUP(length);
+  vmap->end = p->vma_sz;
+  vmap->rbegin = vmap->begin;
+  vmap->rend = vmap->begin + length;
+  p->vma_sz -= PGROUNDUP(length);
+  vmap->fp = filedup(fp); // increase file ref
+  vmap->prot = prot;
+  vmap->flags = flags;
+  vmap->offset = 0;
+  vmap->valid = 1;
+  return vmap->begin;
+}
+
+uint64 sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  if (argaddr(0, &addr) < 0 || argint(1, &length) < 0)
+    return -1;
+  struct vma* vmap;
+  struct proc* p = myproc();
+  for (vmap = p->vma; vmap < p->vma + 16; vmap++) {
+    if (vmap->rbegin <= addr && addr + length <= vmap->rend)
+      break;
+  }
+  // not found
+  if (vmap == (p->vma + 16))
+    return -1;
+  // only need to deal with head cut or tail cut
+  if (addr == vmap->rbegin) {
+    uint64 prePG = PGROUNDDOWN(vmap->rbegin);
+    uint64 curPG = PGROUNDDOWN(vmap->rbegin + length);
+    while (prePG < curPG) {
+      if (walkaddr(p->pagetable, prePG) != 0) {
+        if (vmap->flags & MAP_SHARED)
+          _filewrite(vmap->fp, prePG, PGSIZE, prePG-vmap->begin);
+        uvmunmap(p->pagetable, prePG, 1, 1);
+      }
+      prePG += PGSIZE;
+    }
+    vmap->rbegin += length;
+  } else if (addr + length == vmap->rend) {
+    uint64 prePG = PGROUNDDOWN(vmap->rend);
+    uint64 curPG = PGROUNDDOWN(addr);
+    while (prePG > curPG) {
+      if (walkaddr(p->pagetable, prePG) != 0) {
+        if (vmap->flags & MAP_SHARED)
+          _filewrite(vmap->fp, prePG, PGSIZE, prePG-vmap->begin);
+        uvmunmap(p->pagetable, prePG, 1, 1);
+      }
+      prePG -= PGSIZE;
+    }
+    vmap->rend -= length;
+  } else {
+    printf("Invalid munmap\n");
+    return -1;
+  }
+  if (vmap->rbegin == vmap->rend) {
+    if (walkaddr(p->pagetable, PGROUNDDOWN(vmap->rbegin)) != 0) {
+      if (vmap->flags & MAP_SHARED)
+        _filewrite(vmap->fp, PGROUNDDOWN(vmap->rbegin), PGSIZE, vmap->rbegin - vmap->begin);
+      uvmunmap(p->pagetable, PGROUNDDOWN(vmap->rbegin), 1, 1);
+    }
+    vmap->valid = -1;
+    fileclose(vmap->fp);
+  }
+  return 0;
+}

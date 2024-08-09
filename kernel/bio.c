@@ -109,17 +109,18 @@ bget(uint dev, uint blockno)
   release(&bcache.bhash_lk[key]);
   // not cached, acquire evict lock and check whether the block has been cached.
   acquire(&bcache.evict_lk);
-  for(b = bcache.bhash_head[key].next; b != &bcache.bhash_head[key]; b = b->next){
+  for(b = bcache.bhash_head[key].next; b != &bcache.bhash_head[key]; b = b->next) {
+    acquire(&bcache.bhash_lk[key]);
     if(b->dev == dev && b->blockno == blockno){
       // has been cached by other cpu
       // because have acquired the evict lock, so the linked list is valid (won't be added by other threads)
-      acquire(&bcache.bhash_lk[key]);
       b->refcnt++;
       release(&bcache.bhash_lk[key]);
       release(&bcache.evict_lk);
       acquiresleep(&b->lock);
       return b;
     }
+    release(&bcache.bhash_lk[key]);
   }
   // really hasn't been cached, now start to find LRU
   int lrubkt;

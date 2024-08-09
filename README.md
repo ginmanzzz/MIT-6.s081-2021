@@ -1,3 +1,11 @@
+# XV6 Operating System Kernel
+
+This is my solution of MIT 6.S081 OS lab 2021. It has fundamental features of  
+OS kernel, consisting of some labs. In every lab, you need to add some new  
+modern OS features into xv6, like adding some special system calls,  
+implementing Copy-On-Write(COW) fork, and so on.  
+
+**Followings are the original README of xv6:**  
 xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.
